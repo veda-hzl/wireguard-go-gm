@@ -9,7 +9,7 @@ import (
 	"encoding/hex"
 	"testing"
 
-	"golang.org/x/crypto/blake2s"
+	"github.com/tjfoc/gmsm/sm3"
 )
 
 type KDFTest struct {
@@ -51,7 +51,7 @@ func TestKDF(t *testing.T) {
 		},
 	}
 
-	var t0, t1, t2 [blake2s.Size]byte
+	var t0, t1, t2 [sm3.Size]byte
 
 	for _, test := range tests {
 		key, _ := hex.DecodeString(test.key)

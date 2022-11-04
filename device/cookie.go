@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/tjfoc/gmsm/sm3"
 	"golang.org/x/crypto/blake2s"
 	"golang.org/x/crypto/chacha20poly1305"
 )
@@ -18,10 +19,10 @@ import (
 type CookieChecker struct {
 	sync.RWMutex
 	mac1 struct {
-		key [blake2s.Size]byte
+		key [sm3.Size]byte
 	}
 	mac2 struct {
-		secret        [blake2s.Size]byte
+		secret        [sm3.Size]byte
 		secretSet     time.Time
 		encryptionKey [chacha20poly1305.KeySize]byte
 	}
@@ -30,7 +31,7 @@ type CookieChecker struct {
 type CookieGenerator struct {
 	sync.RWMutex
 	mac1 struct {
-		key [blake2s.Size]byte
+		key [sm3.Size]byte
 	}
 	mac2 struct {
 		cookie        [blake2s.Size128]byte
@@ -48,7 +49,7 @@ func (st *CookieChecker) Init(pk NoisePublicKey) {
 	// mac1 state
 
 	func() {
-		hash, _ := blake2s.New256(nil)
+		hash := sm3.New()
 		hash.Write([]byte(WGLabelMAC1))
 		hash.Write(pk[:])
 		hash.Sum(st.mac1.key[:0])
@@ -57,7 +58,7 @@ func (st *CookieChecker) Init(pk NoisePublicKey) {
 	// mac2 state
 
 	func() {
-		hash, _ := blake2s.New256(nil)
+		hash := sm3.New()
 		hash.Write([]byte(WGLabelCookie))
 		hash.Write(pk[:])
 		hash.Sum(st.mac2.encryptionKey[:0])
@@ -175,14 +176,14 @@ func (st *CookieGenerator) Init(pk NoisePublicKey) {
 	defer st.Unlock()
 
 	func() {
-		hash, _ := blake2s.New256(nil)
+		hash := sm3.New()
 		hash.Write([]byte(WGLabelMAC1))
 		hash.Write(pk[:])
 		hash.Sum(st.mac1.key[:0])
 	}()
 
 	func() {
-		hash, _ := blake2s.New256(nil)
+		hash := sm3.New()
 		hash.Write([]byte(WGLabelCookie))
 		hash.Write(pk[:])
 		hash.Sum(st.mac2.encryptionKey[:0])
