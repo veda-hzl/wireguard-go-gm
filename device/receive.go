@@ -183,7 +183,7 @@ func (device *Device) RoutineReceiveIncoming(recv conn.ReceiveFunc) {
 			okay = len(packet) == MessageCookieReplySize
 
 		default:
-			device.log.Verbosef("Received message with unknown type")
+			device.log.Verbosef("Received message with unknown type(", msgType, ")")
 		}
 
 		if okay {
@@ -213,19 +213,10 @@ func (device *Device) RoutineDecryption(id int) {
 		content := elem.packet[MessageTransportOffsetContent:]
 
 		// decrypt and release to consumer
-		var err error
 		elem.counter = binary.LittleEndian.Uint64(counter)
 		// copy counter to nonce
 		binary.LittleEndian.PutUint64(nonce[0x4:0xc], elem.counter)
-		elem.packet, err = elem.keypair.receive.Open(
-			content[:0],
-			nonce[:],
-			content,
-			nil,
-		)
-		if err != nil {
-			elem.packet = nil
-		}
+		elem.keypair.receive.Decrypt(content[:0], content)
 		elem.Unlock()
 	}
 }

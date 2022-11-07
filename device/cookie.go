@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/tjfoc/gmsm/sm3"
+	"github.com/tjfoc/gmsm/sm4"
 	"golang.org/x/crypto/blake2s"
 	"golang.org/x/crypto/chacha20poly1305"
 )
@@ -24,7 +25,7 @@ type CookieChecker struct {
 	mac2 struct {
 		secret        [sm3.Size]byte
 		secretSet     time.Time
-		encryptionKey [chacha20poly1305.KeySize]byte
+		encryptionKey [sm4.BlockSize * 2]byte
 	}
 }
 
@@ -38,7 +39,7 @@ type CookieGenerator struct {
 		cookieSet     time.Time
 		hasLastMAC1   bool
 		lastMAC1      [blake2s.Size128]byte
-		encryptionKey [chacha20poly1305.KeySize]byte
+		encryptionKey [sm4.BlockSize * 2]byte
 	}
 }
 

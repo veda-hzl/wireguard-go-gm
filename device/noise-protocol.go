@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/tjfoc/gmsm/sm3"
+	"github.com/tjfoc/gmsm/sm4"
 	"golang.org/x/crypto/blake2s"
 	"golang.org/x/crypto/chacha20poly1305"
 	"golang.org/x/crypto/poly1305"
@@ -47,7 +48,7 @@ func (hs handshakeState) String() string {
 }
 
 const (
-	NoiseConstruction = "Noise_IKpsk2_SM2_ChaChaPoly_SM3"
+	NoiseConstruction = "Noise_IKpsk2_Sm2_Sm4Poly_Sm3"
 	WGIdentifier      = "WireGuard v1 zx2c4 Jason@zx2c4.com"
 	WGLabelMAC1       = "mac1----"
 	WGLabelCookie     = "cookie--"
@@ -209,15 +210,20 @@ func (device *Device) CreateMessageInitiation(peer *Peer) (*MessageInitiation, e
 	if isZero(ss[:]) {
 		return nil, errZeroECDHResult
 	}
-	var key [chacha20poly1305.KeySize]byte
+	var key [sm4.BlockSize * 2]byte
 	KDF2(
 		&handshake.chainKey,
 		&key,
 		handshake.chainKey[:],
 		ss[:],
 	)
-	aead, _ := chacha20poly1305.New(key[:])
-	aead.Seal(msg.Static[:0], ZeroNonce[:], device.staticIdentity.publicKey[:], handshake.hash[:])
+
+	c := NewSm4Cipher(key[16:])
+	err = c.Encrypt(msg.Static[:], device.staticIdentity.publicKey[:])
+	if err != nil {
+		return nil, err
+	}
+
 	handshake.mixHash(msg.Static[:])
 
 	// encrypt timestamp
@@ -231,8 +237,12 @@ func (device *Device) CreateMessageInitiation(peer *Peer) (*MessageInitiation, e
 		handshake.precomputedStaticStatic[:],
 	)
 	timestamp := tai64n.Now()
-	aead, _ = chacha20poly1305.New(key[:])
-	aead.Seal(msg.Timestamp[:0], ZeroNonce[:], timestamp[:], handshake.hash[:])
+
+	c = NewSm4Cipher(key[16:])
+	err = c.Encrypt(msg.Timestamp[:], timestamp[:])
+	if err != nil {
+		return nil, err
+	}
 
 	// assign index
 	device.indexTable.Delete(handshake.localIndex)
@@ -265,16 +275,15 @@ func (device *Device) ConsumeMessageInitiation(msg *MessageInitiation) *Peer {
 	mixKey(&chainKey, &InitialChainKey, msg.Ephemeral[:])
 
 	// decrypt static key
-	var err error
 	var peerPK NoisePublicKey
-	var key [chacha20poly1305.KeySize]byte
+	var key [sm4.BlockSize * 2]byte
 	ss := device.staticIdentity.privateKey.sharedSecret(msg.Ephemeral)
 	if isZero(ss[:]) {
 		return nil
 	}
 	KDF2(&chainKey, &key, chainKey[:], ss[:])
-	aead, _ := chacha20poly1305.New(key[:])
-	_, err = aead.Open(peerPK[:0], ZeroNonce[:], msg.Static[:], hash[:])
+	c := NewSm4Cipher(key[16:])
+	err := c.Decrypt(peerPK[:], msg.Static[:])
 	if err != nil {
 		return nil
 	}
@@ -305,8 +314,8 @@ func (device *Device) ConsumeMessageInitiation(msg *MessageInitiation) *Peer {
 		chainKey[:],
 		handshake.precomputedStaticStatic[:],
 	)
-	aead, _ = chacha20poly1305.New(key[:])
-	_, err = aead.Open(timestamp[:0], ZeroNonce[:], msg.Timestamp[:], hash[:])
+	c = NewSm4Cipher(key[16:])
+	err = c.Decrypt(timestamp[:], msg.Timestamp[:16])
 	if err != nil {
 		handshake.mutex.RUnlock()
 		return nil
@@ -395,7 +404,7 @@ func (device *Device) CreateMessageResponse(peer *Peer) (*MessageResponse, error
 	// add preshared key
 
 	var tau [sm3.Size]byte
-	var key [chacha20poly1305.KeySize]byte
+	var key [sm4.BlockSize * 2]byte
 
 	KDF3(
 		&handshake.chainKey,
@@ -408,8 +417,8 @@ func (device *Device) CreateMessageResponse(peer *Peer) (*MessageResponse, error
 	handshake.mixHash(tau[:])
 
 	func() {
-		aead, _ := chacha20poly1305.New(key[:])
-		aead.Seal(msg.Empty[:0], ZeroNonce[:], nil, handshake.hash[:])
+		c := NewSm4Cipher(key[16:])
+		c.Encrypt(msg.Empty[:0], nil)
 		handshake.mixHash(msg.Empty[:])
 	}()
 
@@ -471,7 +480,7 @@ func (device *Device) ConsumeMessageResponse(msg *MessageResponse) *Peer {
 		// add preshared key (psk)
 
 		var tau [sm3.Size]byte
-		var key [chacha20poly1305.KeySize]byte
+		var key [sm4.BlockSize * 2]byte
 		KDF3(
 			&chainKey,
 			&tau,
@@ -483,11 +492,10 @@ func (device *Device) ConsumeMessageResponse(msg *MessageResponse) *Peer {
 
 		// authenticate transcript
 
-		aead, _ := chacha20poly1305.New(key[:])
-		_, err := aead.Open(nil, ZeroNonce[:], msg.Empty[:], hash[:])
-		if err != nil {
-			return false
-		}
+		// FixMe: nil encrypt, so we skip decrypt it
+		// c := NewSm4Cipher(key[16:])
+		// c.Decrypt(nil, msg.Empty[:])
+
 		mixHash(&hash, &hash, msg.Empty[:])
 		return true
 	}()
@@ -525,8 +533,8 @@ func (peer *Peer) BeginSymmetricSession() error {
 	// derive keys
 
 	var isInitiator bool
-	var sendKey [chacha20poly1305.KeySize]byte
-	var recvKey [chacha20poly1305.KeySize]byte
+	var sendKey [sm4.BlockSize * 2]byte
+	var recvKey [sm4.BlockSize * 2]byte
 
 	if handshake.state == handshakeResponseConsumed {
 		KDF2(
@@ -558,8 +566,8 @@ func (peer *Peer) BeginSymmetricSession() error {
 	// create AEAD instances
 
 	keypair := new(Keypair)
-	keypair.send, _ = chacha20poly1305.New(sendKey[:])
-	keypair.receive, _ = chacha20poly1305.New(recvKey[:])
+	keypair.send = NewSm4Cipher(sendKey[16:])
+	keypair.receive = NewSm4Cipher(recvKey[16:])
 
 	setZero(sendKey[:])
 	setZero(recvKey[:])

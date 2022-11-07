@@ -6,7 +6,6 @@
 package device
 
 import (
-	"crypto/cipher"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -23,8 +22,8 @@ import (
 
 type Keypair struct {
 	sendNonce    atomic.Uint64
-	send         cipher.AEAD
-	receive      cipher.AEAD
+	send         Cipher
+	receive      Cipher
 	replayFilter replay.Filter
 	isInitiator  bool
 	created      time.Time
