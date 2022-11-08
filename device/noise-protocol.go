@@ -219,7 +219,7 @@ func (device *Device) CreateMessageInitiation(peer *Peer) (*MessageInitiation, e
 	)
 
 	c := NewSm4Cipher(key[16:])
-	err = c.Encrypt(msg.Static[:], device.staticIdentity.publicKey[:])
+	_, err = c.Encrypt(msg.Static[:0], device.staticIdentity.publicKey[:])
 	if err != nil {
 		return nil, err
 	}
@@ -239,7 +239,7 @@ func (device *Device) CreateMessageInitiation(peer *Peer) (*MessageInitiation, e
 	timestamp := tai64n.Now()
 
 	c = NewSm4Cipher(key[16:])
-	err = c.Encrypt(msg.Timestamp[:], timestamp[:])
+	_, err = c.Encrypt(msg.Timestamp[:0], timestamp[:])
 	if err != nil {
 		return nil, err
 	}
@@ -283,7 +283,7 @@ func (device *Device) ConsumeMessageInitiation(msg *MessageInitiation) *Peer {
 	}
 	KDF2(&chainKey, &key, chainKey[:], ss[:])
 	c := NewSm4Cipher(key[16:])
-	err := c.Decrypt(peerPK[:], msg.Static[:])
+	_, err := c.Decrypt(peerPK[:0], msg.Static[:])
 	if err != nil {
 		return nil
 	}
@@ -315,7 +315,7 @@ func (device *Device) ConsumeMessageInitiation(msg *MessageInitiation) *Peer {
 		handshake.precomputedStaticStatic[:],
 	)
 	c = NewSm4Cipher(key[16:])
-	err = c.Decrypt(timestamp[:], msg.Timestamp[:16])
+	_, err = c.Decrypt(timestamp[:0], msg.Timestamp[:16])
 	if err != nil {
 		handshake.mutex.RUnlock()
 		return nil

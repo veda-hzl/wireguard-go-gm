@@ -374,6 +374,7 @@ func (device *Device) RoutineEncryption(id int) {
 	for elem := range device.queue.encryption.c {
 		// populate header fields
 		header := elem.buffer[:MessageTransportHeaderSize]
+		ecpPkt := elem.buffer[MessageTransportHeaderSize:MessageTransportHeaderSize]
 
 		fieldType := header[0:4]
 		fieldReceiver := header[4:8]
@@ -390,7 +391,8 @@ func (device *Device) RoutineEncryption(id int) {
 		// encrypt content and release to consumer
 
 		binary.LittleEndian.PutUint64(nonce[4:], elem.nonce)
-		elem.keypair.send.Encrypt(header, elem.packet)
+		l, _ := elem.keypair.send.Encrypt(ecpPkt, elem.packet)
+		elem.packet = elem.buffer[:MessageTransportHeaderSize+l]
 		elem.Unlock()
 	}
 }
